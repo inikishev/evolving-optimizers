@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: evolving_optimizers
+Version: 0.1.0
+Summary: Evolving optimizers and linear solvers.
+Author-email: Ivan Nikishev <nkshv2@gmail.com>
+Project-URL: Homepage, https://github.com/inikishev/rstmat
+Project-URL: Repository, https://github.com/inikishev/rstmat
+Project-URL: Issues, https://github.com/inikishev/rstmat/isses
+Keywords: linear algebra,random,linalg,torch
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: numpy
+Requires-Dist: scipy

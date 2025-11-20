@@ -1,0 +1,45 @@
+# NEW VERSION TUTORIAL FOR MYSELF
+# STEP 1 - COMMIT NEW CHANGES AND PUSH THEM
+# STEP 2 - BUMP VERSION AND COMMIT IT (DONT PUSH!!!!)
+# STEP 3 - CREATE TAG WITH THAT VERSION
+# STEP 4 - PUSH (SYNC) CHANGES
+# STEP 5 - PUSH TAG
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evolving_optimizers"
+description = "Evolving optimizers and linear solvers."
+
+version = "0.1.0"
+dependencies = [
+  "torch",
+  "numpy",
+  "scipy",
+]
+requires-python = ">= 3.10"
+readme = "README.md"
+authors = [
+  {name = "Ivan Nikishev", email = "nkshv2@gmail.com"},
+]
+license = {file = "LICENSE"}
+keywords = ["linear algebra", "random", "linalg", "torch"]
+
+
+[project.urls]
+Homepage = "https://github.com/inikishev/rstmat"
+Repository = "https://github.com/inikishev/rstmat"
+Issues = "https://github.com/inikishev/rstmat/isses"
+
+# [tool.setuptools]
+# package-dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+
+[tool.setuptools.packages]
+find = {}  # Scanning implicit namespaces is active by default
