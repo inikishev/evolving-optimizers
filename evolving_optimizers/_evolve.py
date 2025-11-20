@@ -17,20 +17,27 @@ from ._crossover import CrossoverSwap
 from ._mutation import RandomMutation
 
 
-class Solution(NamedTuple):
-    tree: BaseOperation
-    fitness: float
-    """lower is better"""
-    data: Any = None
-    optimizer_data: dict = {}
+class Solution:
+    def __init__(self, tree: BaseOperation, fitness: float, data: Any = None):
+        self.tree: BaseOperation = tree
+        self.fitness: float = fitness
+        """lower is better"""
+
+        self.data: Any = data
+        self.optimizer_data: dict = {}
+
+    def copy(self):
+        "doesnt copy tree but shallow copies optimizer data"
+        sol_copy = Solution(self.tree, self.fitness, self.data)
+        sol_copy.optimizer_data = self.optimizer_data.copy()
+        return sol_copy
 
 def _solution_to_cpu(solution: Solution):
-    tree = solution.tree.clone()
-    tree.to_(device="cpu")
-    return Solution(tree, solution.fitness, solution.data, solution.optimizer_data)
-
-def _copy_solution(solution: Solution):
-    return Solution(solution.tree, solution.fitness, solution.data, solution.optimizer_data.copy())
+    tree_cpu = solution.tree.clone()
+    tree_cpu.to_(device="cpu")
+    sol_cpu = Solution(tree_cpu, solution.fitness, solution.data)
+    sol_cpu.optimizer_data = solution.optimizer_data
+    return sol_cpu
 
 def _remove_duplicates(solutions: list[Solution]) -> list[Solution]:
     strings = []
@@ -176,7 +183,7 @@ class OnePlusOne(Optimizer):
 
 class ARS(Optimizer):
     """ARS"""
-    def __init__(self, mul=0.8, maxiter=50, mutation: BaseMutation = RandomMutation()):
+    def __init__(self, mul=0.9, maxiter=50, mutation: BaseMutation = RandomMutation()):
         self.mutation = mutation
         self.mul = mul
         self.maxiter = maxiter
@@ -327,7 +334,7 @@ class IslandGA(Optimizer):
         # initialize islands on 1st step
         if all("optimizer_id" not in ind.optimizer_data for ind in population):
             for opt in self.optimizers:
-                island = [_copy_solution(s) for s in population]
+                island = [s.copy() for s in population]
                 if self.random_init is not None:
                     island = population + objective([pool.random_tree() for _ in range(self.random_init)])
 
@@ -337,7 +344,7 @@ class IslandGA(Optimizer):
                 for ind in island:
                     ind.optimizer_data["optimizer_id"] = id(opt)
 
-                islands.append([_copy_solution(s) for s in island])
+                islands.append([s.copy() for s in island])
 
         else:
             # if there are any individuals without island distributed them randomly
@@ -349,7 +356,7 @@ class IslandGA(Optimizer):
 
             # step each optimizer with its island
             for opt in self.optimizers:
-                island = [_copy_solution(ind) for ind in population if ind.optimizer_data["optimizer_id"] == id(opt)]
+                island = [s.copy() for s in population if s.optimizer_data["optimizer_id"] == id(opt)]
 
                 if len(island) == 0:
                     warnings.warn(f"island for {opt} is empty")
@@ -361,7 +368,7 @@ class IslandGA(Optimizer):
                 for ind in island:
                     ind.optimizer_data["optimizer_id"] = id(opt)
 
-                islands.append([_copy_solution(s) for s in island])
+                islands.append([s.copy() for s in island])
 
         # exchange
         orig_islands = islands.copy()
@@ -460,11 +467,8 @@ class Runner:
 
 def map_objective(objective: Callable[[BaseOperation], float]):
     def mapped(trees: list[BaseOperation]):
-        pop = []
-        for tree in trees:
-            loss = objective(tree)
-            pop.append(Solution(tree, loss))
-        return pop
+        losses = [objective(tree) for tree in trees]
+        return [Solution(tree, float(loss)) for tree, loss in zip(trees, losses)]
     return mapped
 
 
