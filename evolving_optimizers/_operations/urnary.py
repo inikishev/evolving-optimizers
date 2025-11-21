@@ -31,7 +31,7 @@ class Neg(BaseOperation):
     N_OPERANDS = 1
 
     def forward(self, state):
-        return self.get_operand(0, state).abs().sqrt()
+        return self.get_operand(0, state).neg()
 
     def __repr__(self):
         return f"(-{self.operands[0]})"
@@ -261,7 +261,7 @@ class NormalizeLInf(BaseOperation):
         return operand / linf.clip(min=torch.finfo(linf.dtype).tiny * 2)
 
 @decorator_common
-class Negate(BaseOperation):
+class SubFromMax(BaseOperation):
     N_OPERANDS = 1
 
     def forward(self, state):

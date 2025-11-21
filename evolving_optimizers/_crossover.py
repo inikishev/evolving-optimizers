@@ -15,19 +15,15 @@ class CrossoverSwap(BaseCrossover):
         # select branches
         for _ in range(100):
 
-            target_rdepth = random.choice([0, 1])
+            target_rdepth = random.uniform(0, 1)
             branch1, idxs1 = tree1.pick_random_branch(
                 target_rdepth = target_rdepth,
                 self_weight = random.choice([0.25, None]),
-                exp = 1,
-                eps = 0.1
             )
 
             branch2, idxs2 = tree2.pick_random_branch(
                 target_rdepth = target_rdepth,
                 self_weight = random.choice([0.25, None]),
-                exp = 1,
-                eps = 0.1
             )
 
             if len(idxs1) == len(idxs2) == 0: continue

@@ -14,7 +14,7 @@ import torch
 
 from ._bases import BaseCrossover, BaseMutation, BaseOperation, BasePool
 from ._crossover import CrossoverSwap
-from ._mutation import RandomMutation
+from ._mutation import RandomMutationCombo
 
 
 class Solution:
@@ -94,7 +94,7 @@ class TopkGA(Optimizer):
 
     note that selection doesn't have much effect here because it only removes overflow solutions.
     """
-    def __init__(self, pop_size: int = 100, n_random: int = 10, crossover_rate: float=0.5, mutation_rate: float = 1e-1, mutation_exp: float = 1, selection: BaseSelectionStrategy = RankWeightedSelection(5), crossover: BaseCrossover = CrossoverSwap(), mutation: BaseMutation = RandomMutation()):
+    def __init__(self, pop_size: int = 100, n_random: int = 10, crossover_rate: float=0.5, mutation_rate: float = 1e-1, mutation_exp: float = 1, selection: BaseSelectionStrategy = RankWeightedSelection(5), crossover: BaseCrossover = CrossoverSwap(), mutation: BaseMutation = RandomMutationCombo()):
         self.pop_size = pop_size
         self.n_random = n_random
         self.crossover_rate = crossover_rate
@@ -159,7 +159,7 @@ class TopkGA(Optimizer):
 
 class OnePlusOne(Optimizer):
     """mutates and accepts or rejects depending on whether mutation helped"""
-    def __init__(self, n_candidates: int = 1, mutation: BaseMutation = RandomMutation(), mutation_exp:float = 1):
+    def __init__(self, n_candidates: int = 1, mutation: BaseMutation = RandomMutationCombo(), mutation_exp:float = 1):
         self.mutation = mutation
         self.n_candidates = n_candidates
         self.mutation_exp = mutation_exp
@@ -183,7 +183,7 @@ class OnePlusOne(Optimizer):
 
 class ARS(Optimizer):
     """ARS"""
-    def __init__(self, mul=0.9, maxiter=50, mutation: BaseMutation = RandomMutation()):
+    def __init__(self, mul=0.9, maxiter=50, mutation: BaseMutation = RandomMutationCombo()):
         self.mutation = mutation
         self.mul = mul
         self.maxiter = maxiter
@@ -222,7 +222,7 @@ class K1Plus1(Optimizer):
 
     If initial population is larger than ``pop_size``, it will remove ``k`` worst solutions per step until it reaches ``pop_size``.
     """
-    def __init__(self, pop_size:int = 10, k:int = 5, mutation_exp:float = 1, crossover_prob:float=0.5, mutation: BaseMutation = RandomMutation(), crossover: BaseCrossover = CrossoverSwap()):
+    def __init__(self, pop_size:int = 10, k:int = 5, mutation_exp:float = 1, crossover_prob:float=0.5, mutation: BaseMutation = RandomMutationCombo(), crossover: BaseCrossover = CrossoverSwap()):
         self.pop_size = pop_size
         self.k = k
         self.crossover_prob = crossover_prob
@@ -290,7 +290,7 @@ class IslandGA(Optimizer):
         random_init (int | None, optional):
             if specified, will generate this many random trees per each optimizer on first step to initilize it.
             Initial population will be appended to random trees. Defaults to None.
-        mutation (BaseMutation, optional): type of mutation. Defaults to RandomMutation().
+        mutation (BaseMutation, optional): type of mutation. Defaults to RandomMutationCombo().
         crossover (BaseCrossover, optional): type of crossover. Defaults to CrossoverSwap().
     """
 
@@ -303,7 +303,7 @@ class IslandGA(Optimizer):
         two_way: bool = False,
         remove_duplicates: bool = True,
         random_init: int | None = None,
-        mutation: BaseMutation = RandomMutation(),
+        mutation: BaseMutation = RandomMutationCombo(),
         crossover: BaseCrossover = CrossoverSwap(),
     ):
         self.optimizers = list(optimizers)

@@ -2,7 +2,7 @@ import random
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -87,15 +87,20 @@ class BaseOperation(ABC):
         self.operands: list[BaseOperation] = list(operands)
         self.hyperparams: dict[str, BaseHyperparameter] = {k: _init_hyperparam(self.HYPERPARAMS[k], v) for k,v in hyperparams.items()}
 
+        self.ref = cast(torch.Tensor, None)
+
     def initialize(self, ref: torch.Tensor) -> None:
         """initializes state such as buffers etc, this will be called multiple times to reset and reinitialize.
-        ``ref`` is a reference tensor of the same shape as all operands"""
+        ``ref`` is any reference tensor of the same shape as all operands"""
 
-    def prepare_(self, ref:torch.Tensor):
-        for b in self.flat_branches():
-            b.initialize(ref)
+    def prepare_(self, reference_tensor:torch.Tensor):
+        """Initializes all hyperparameters and buffers based on shape and device of ``ref``,
+        which can be any tensor of correct shape, device, dtype, etc."""
+        for b in self.flat_branches(include_self=True):
+            b.initialize(reference_tensor)
+            b.ref = reference_tensor
 
-        self.to_(ref.device)
+        self.to_(reference_tensor.device)
 
 
     @abstractmethod

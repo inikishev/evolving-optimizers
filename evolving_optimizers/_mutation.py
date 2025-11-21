@@ -278,7 +278,7 @@ class RandomMutationCombo(BaseMutation):
         weights = [2**(c-1) for c in choices]
         weights.reverse()
 
-        n_mutations = random.choices(choices, weights=weights)
+        n_mutations = random.choices(choices, weights=weights, k=1)[0]
 
         sigmas = np.random.triangular(0, 0, 1, size=n_mutations)
         sigmas = sigmas / sigmas.sum()

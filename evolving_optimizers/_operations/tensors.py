@@ -3,8 +3,6 @@ from .._bases import BaseOperation, _format_hyperparam
 from .._hyperparameter import Continuous, Choice
 from .pools import decorator_common
 
-# we shall have "ref" in all states which is any tensor of correct shape device etc
-
 @decorator_common
 class Random(BaseOperation):
     ALLOW_FIRST = False
@@ -14,14 +12,14 @@ class Random(BaseOperation):
         distribution = self.get_hyperparam("distribution")
 
         if distribution == "normal":
-            return torch.randn_like(state["ref"])
+            return torch.randn_like(self.ref)
 
         if distribution == "rademacher":
-            return torch.randint_like(state["ref"], 0, 2) * 2 - 1
+            return torch.randint_like(self.ref, 0, 2) * 2 - 1
 
         if distribution == "uniform":
             with torch.no_grad():
-                return torch.empty_like(state["ref"]).uniform_(-1,1)
+                return torch.empty_like(self.ref).uniform_(-1,1)
 
         raise ValueError(distribution)
 
@@ -35,7 +33,7 @@ class Full(BaseOperation):
 
     def forward(self, state):
         x = self.get_hyperparam("x")
-        return torch.full_like(state["ref"], fill_value=x)
+        return torch.full_like(self.ref, fill_value=x)
 
     def __repr__(self):
         x = _format_hyperparam(self.get_hyperparam("x"))

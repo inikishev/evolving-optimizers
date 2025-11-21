@@ -68,7 +68,7 @@ class TreeOpt(torch.optim.Optimizer):
                 return torch.cat([t.ravel() for t in Hz])
 
         p = torch.cat([t.ravel() for t in params])
-        state = {"loss_fn": loss_fn, "loss_grad_fn": loss_grad_fn, "hessp_fn": hessp_fn, "p": p, "ref": p}
+        state = {"loss_fn": loss_fn, "loss_grad_fn": loss_grad_fn, "hessp_fn": hessp_fn, "p": p}
 
         dir = self.tree.forward(state)
         dir_list = vec_to_tensors(dir, params)
@@ -190,6 +190,7 @@ class DirectionalHessp(BaseOperation):
         return Hz
 
 OPTIMIZER_POOL = [Grad, Loss, Params, Hessp, LossAt, GradAt, HesspAt, DirectionalGrad, DirectionalLoss, DirectionalHessp]
+OPT_MUST_CONTAIN_ANY_OF = [Grad, Hessp, GradAt, HesspAt, DirectionalGrad, DirectionalHessp]
 def gd():
     return Grad()
 
