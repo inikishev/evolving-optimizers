@@ -4,4 +4,4 @@ initially I had the idea of evolving a solver for A^{1/2}x = b, although I am a 
 
 Since I am experimenting with this still it will be updated will better readme if it works.
 
-Here is an example notebook where I evolved a linear system solver https://colab.research.google.com/drive/1S9hdNvGFTLwV572HfOGaQqH6OxdqDHID?usp=sharing.
+Here is an example notebook where I evolved a linear system solver https://colab.research.google.com/drive/1cRGP485LLryW5DzX_jn9Mb8woBw_VRIw?usp=sharing
