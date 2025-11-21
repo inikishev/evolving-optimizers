@@ -1,18 +1,20 @@
 import math
-import warnings
 import random
+import warnings
+
+import numpy as np
 
 from ._bases import BaseMutation, BaseOperation
 
 
-class PointMutation(BaseMutation):
+class MutateRandomizeHyperparam(BaseMutation):
     """picks random hyperparameter and sets it to a random value"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
 
         branches = [o for o in tree.flat_branches() if len(o.hyperparams) > 0]
         if len(branches) == 0:
-            return RandomMutation().mutate(pool, tree, sigma)
+            return RandomMutationCombo().mutate(pool, tree, sigma)
 
         branch = random.choice(branches)
         hyperparam = random.choice(tuple(branch.hyperparams.values()))
@@ -40,7 +42,8 @@ def _tree_mutate_perturb_(tree: BaseOperation, sigma):
 
     return perturbed
 
-class PerturbMutation(BaseMutation):
+class MutatePerturbHyperparam(BaseMutation):
+    """perturbs all hyperparams slightly"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
         perturbed = _tree_mutate_perturb_(tree, sigma)
@@ -50,7 +53,7 @@ class PerturbMutation(BaseMutation):
 
             branches = [o for o in tree.flat_branches() if len(o.hyperparams) > 0]
             if len(branches) == 0:
-                return RandomMutation().mutate(pool, tree, sigma)
+                return RandomMutationCombo().mutate(pool, tree, sigma)
 
             branch = random.choice(branches)
             hyperparam = random.choice(tuple(branch.hyperparams.values()))
@@ -58,30 +61,21 @@ class PerturbMutation(BaseMutation):
 
         return tree
 
-class BranchMutation(BaseMutation):
+class MutateReplaceBranch(BaseMutation):
+    """replaces a branch with a randomly generated"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
 
         if tree.N_OPERANDS == 0:
             return pool.random_tree(0)
 
-        # pick index of a branch to replace
-        idxs = tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * (1-sigma)
-
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
-        weights = [max((maxv - iw), 0.5)**2 for iw in inv_weights]
-
-        idx = random.choices(idxs, weights, k=1)[0]
-
-        # replace branch with a new random tree
-        tree.replace_branch_by_idxs_(idx, pool.random_tree(len(idx)))
+        _, idx = tree.pick_random_branch(1-sigma, self_weight=None)
+        tree.replace_branch_by_idx_(idx, pool.random_tree(len(idx)))
 
         return tree
 
-class InsertMutation(BaseMutation):
+class MutateInsertIntoRandomBranch(BaseMutation):
+    """picks a branch and inserts it as operand into a randomly generated branch, which replaces it"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
 
@@ -91,33 +85,28 @@ class InsertMutation(BaseMutation):
             new_root.operands[idx] = tree
             return new_root
 
-        # pick index of a branch to insert a new operation before it
-        idxs = [[]] + tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * (1-sigma)
-
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
-        weights = [max((maxv - iw), 0.5)**2 for iw in inv_weights]
-
-        idx = random.choices(idxs, weights, k=1)[0]
+        # pick a branch to insert and replace
+        branch, idx = tree.pick_random_branch(1-sigma, self_weight=0.5)
 
         # generate the new branch
         new_branch = pool.random_tree(len(idx), weight_fn=lambda x: x.N_OPERANDS > 0)
 
-        # select a random operand in the new branch
-        # and replace it with current branch
-        new_idx = random.choice(list(range(new_branch.N_OPERANDS)))
-        new_branch.operands[new_idx] = tree.select_branch_by_idxs(idx)
+        if new_branch.N_OPERANDS > 0:
+            # select a random operand in the new branch
+            # and replace it with current branch
+            new_idx = random.randrange(0, new_branch.N_OPERANDS)
+            new_branch.operands[new_idx] = branch
+        else:
+            warnings.warn("MutateInsertIntoRandomBranch picked a branch with 0 operands")
 
         # replace current branch with one with new operation inserted
-        if len(idx) == 0:
+        if len(idx) == 0: # means it picked root
             return new_branch
 
-        tree.replace_branch_by_idxs_(idx, new_branch)
+        tree.replace_branch_by_idx_(idx, new_branch)
         return tree
 
-class TruncateMutation(BaseMutation):
+class MutateTruncateBranch(BaseMutation):
     """same as replace except it always replaces a branch with a leaf to counteract insert"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
@@ -125,58 +114,36 @@ class TruncateMutation(BaseMutation):
         if tree.N_OPERANDS == 0:
             return pool.random_tree(0)
 
-        # pick an index to replace with a leaf, it must have operands with children
-        idxs = tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * (1-sigma)
+        # pick a branch with more than 0 operands
+        def no_leaf(branch: BaseOperation, idx: list[int]):
+            if branch.N_OPERANDS == 0: return 0
+            return 1
 
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
+        _, idx = tree.pick_random_branch(1-sigma, weight_fn=no_leaf, self_weight=None)
 
-        def idx_weight(idx):
-            branch = tree.select_branch_by_idxs(idx)
-            if branch.N_OPERANDS == 0:
-                return 1e-4
-
-            dist = abs(len(idx) - target_depth)
-            return max((maxv - dist), 0.5) ** 2
-
-        idx, _ = tree.select_random_branch(weight_fn=idx_weight)
-
-        # generate a leaf to replace the branch with
-        leaf = pool.random_tree(0, weight_fn=lambda x: (x.N_OPERANDS == 0) + 1e-4)
-        tree.replace_branch_by_idxs_(idx, leaf)
+        # replace with a random 0 operand branch
+        leaf = pool.random_tree(len(idx), weight_fn=lambda x: x.N_OPERANDS == 0)
+        tree.replace_branch_by_idx_(idx, leaf)
 
         return tree
 
-class CutMutation(BaseMutation):
-    """picks a random branch"""
+class MutatePickBranch(BaseMutation):
+    """Picks a branch with more than 0 operands and returns it."""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
 
         if tree.N_OPERANDS == 0:
             return pool.random_tree(0)
 
-        # select an index of a branch to pick
-        idxs = tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * sigma
+        # we want to cut a branch with more than 0 operands
+        def no_leaf(branch: BaseOperation, idx: list[int]):
+            if branch.N_OPERANDS == 0: return 0
+            return 1
 
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
-
-        def idx_weight(idx):
-            branch = tree.select_branch_by_idxs(idx)
-            if branch.N_OPERANDS == 0:
-                return 1e-4
-
-            dist = abs(len(idx) - target_depth)
-            return max((maxv - dist), 0.5) ** 2
-
-        _, branch = tree.select_random_branch(weight_fn=idx_weight)
+        branch, _ = tree.pick_random_branch(sigma, weight_fn=no_leaf, self_weight=None)
         return branch
 
-class SimplifyMutation(BaseMutation):
+class MutateCutMiddle(BaseMutation):
     """removes an operand in the middle"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
@@ -185,41 +152,34 @@ class SimplifyMutation(BaseMutation):
             return pool.random_tree(0)
 
         # we need a branch with another branch as an operand
-        idxs = tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * (1 - sigma)
-
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
-
-        def idx_weight(idx):
-            branch = tree.select_branch_by_idxs(idx)
+        def weight_fn(branch: BaseOperation, idx: list[int]):
             if branch.N_OPERANDS == 0:
-                return 1e-4
+                return 0
+
             if sum(op.N_OPERANDS for op in branch.operands) == 0:
-                return 1e-4
+                return 0
 
-            dist = abs(len(idx) - target_depth)
-            return max((maxv - dist), 0.5) ** 2
+            return 1
 
-        idx, branch = tree.select_random_branch(weight_fn=idx_weight)
+        branch, idx = tree.pick_random_branch((1-sigma), weight_fn=weight_fn, self_weight=1)
 
         # pick an operand which is a branch
         sub_branches = [(i,b) for i,b in enumerate(branch.operands) if b.N_OPERANDS != 0]
         if len(sub_branches) == 0:
-            return RandomMutation().mutate(pool, tree, sigma)
+            return RandomMutationCombo().mutate(pool, tree, sigma)
 
         # pick a random operand from the sub branch
-        sub_branch = random.choice(sub_branches)
-        operand = random.choice(sub_branch[1].operands)
+        sub_idx, sub_branch = random.choice(sub_branches)
+        operand = random.choice(sub_branch.operands)
 
         # replace operand with its subbranch
-        tree.replace_branch_by_idxs_(idx + [sub_branch[0]], operand)
+        tree.replace_branch_by_idx_(idx + [sub_idx], operand)
         return tree
 
 
 
-class ReplaceMutation(BaseMutation):
+class MutateReplaceOperand(BaseMutation):
+    """replaces operand in a branch with another random operand with same number of operands"""
     def mutate(self, pool, tree, sigma):
         tree = tree.clone()
 
@@ -227,36 +187,68 @@ class ReplaceMutation(BaseMutation):
             return pool.random_tree(0)
 
         # pick a branch to replace
-        idxs = tree.get_flat_idxs()
-        depth = max(len(i) for i in idxs)
-        target_depth = depth * (1-sigma)
+        branch, idx = tree.pick_random_branch(1-sigma, self_weight=1)
 
-        inv_weights = [abs(len(i) - target_depth) for i in idxs]
-        maxv = max(inv_weights)
-        weights = [max((maxv - iw), 0.5)**2 for iw in inv_weights]
+        # generate new random tree with same number of operands
+        def weight_fn(operand: type[BaseOperation]):
+            if operand.N_OPERANDS != branch.N_OPERANDS: return 0
+            if isinstance(branch, operand): return 0.1
+            return 1
 
-        idx = random.choices(idxs, weights, k=1)[0]
-        cur_branch = tree.select_branch_by_idxs(idx)
+        new_branch = pool.random_tree(len(idx), weight_fn=weight_fn)
 
-        # generate new random tree with same number of immediate operands
         # and set operands to current ones
-        new_branch = pool.random_tree(len(idx), weight_fn=lambda x: (x.N_OPERANDS == cur_branch.N_OPERANDS)+1e-4)
-        if new_branch.N_OPERANDS == cur_branch.N_OPERANDS:
-            new_branch.operands = cur_branch.operands.copy()
+        if new_branch.N_OPERANDS == branch.N_OPERANDS:
+            new_branch.operands = branch.operands.copy()
 
-        tree.replace_branch_by_idxs_(idx, new_branch)
+        if len(idx) == 0:
+            return new_branch
+
+        tree.replace_branch_by_idx_(idx, new_branch)
+        return tree
+
+class MutateSwapBranches(BaseMutation):
+    """swaps two branches"""
+    def mutate(self, pool, tree, sigma):
+        tree = tree.clone()
+
+        if tree.N_OPERANDS == 0:
+            return pool.random_tree(0)
+
+        branch1, idx1 = tree.pick_random_branch(1-sigma, self_weight=None)
+
+        def no_same_branch(branch: BaseOperation, idx: list[int]):
+            if idx == idx1[:len(idx)]: return 0
+            if idx1 == idx[:len(idx1)]: return 0
+            return 1
+
+        branch2, idx2 = tree.pick_random_branch(1-sigma, weight_fn=no_same_branch, self_weight=None, unbiased=False)
+
+        if no_same_branch(branch2, idx2) == 0:
+            return RandomMutationCombo().mutate(pool, tree, sigma)
+
+        tree.replace_branch_by_idx_(idx1, branch2.clone())
+        tree.replace_branch_by_idx_(idx2, branch1)
 
         return tree
+
+
+MUTATIONS = (
+    MutateRandomizeHyperparam(),
+    MutatePerturbHyperparam(),
+    MutateReplaceBranch(),
+    MutateInsertIntoRandomBranch(),
+    MutateTruncateBranch(),
+    MutateReplaceOperand(),
+    MutateCutMiddle(),
+    MutatePickBranch(),
+    MutateSwapBranches(),
+)
 
 class RandomMutation(BaseMutation):
     def __init__(self, *mutations: BaseMutation):
         if len(mutations) == 0:
-            mutations = (
-                PointMutation(), PerturbMutation(),
-                BranchMutation(),  InsertMutation(),
-                TruncateMutation(), ReplaceMutation(),
-                SimplifyMutation(), CutMutation(),
-            )
+            mutations = MUTATIONS
 
         self.mutations = mutations
 
@@ -271,3 +263,36 @@ class RandomMutation(BaseMutation):
         warnings.warn("failed to mutate after 100 attempts, returning random tree")
         return pool.random_tree(0)
 
+class RandomMutationCombo(BaseMutation):
+    """has a chance to apply multiple mutations distributing sigma across them."""
+    def __init__(self, *mutations: BaseMutation):
+        if len(mutations) == 0:
+            mutations = MUTATIONS
+
+        self.mutations = mutations
+
+    def mutate(self, pool, tree, sigma):
+        string = tree.string()
+
+        choices = list(range(1, len(self.mutations)+1))
+        weights = [2**(c-1) for c in choices]
+        weights.reverse()
+
+        n_mutations = random.choices(choices, weights=weights)
+
+        sigmas = np.random.triangular(0, 0, 1, size=n_mutations)
+        sigmas = sigmas / sigmas.sum()
+        sigmas = sigmas * sigma
+
+        for _ in range(100):
+            mutated = tree
+
+            for s in sigmas:
+                mutation = random.choice(self.mutations)
+                mutated = mutation.mutate(pool, mutated, sigma=s)
+
+            if mutated.string() != string:
+                return mutated
+
+        warnings.warn("failed to mutate after 100 attempts, returning random tree")
+        return pool.random_tree(0)

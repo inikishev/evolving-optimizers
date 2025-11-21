@@ -7,7 +7,7 @@ from .pools import decorator_common
 
 
 @decorator_common
-class Threshold(BaseOperation):
+class CompareScalar(BaseOperation):
     N_OPERANDS = 3
     HYPERPARAMS = dict(threshold=Continuous.partial(sigma=10))
     DEFAULTS = dict(threshold=0)
@@ -18,6 +18,32 @@ class Threshold(BaseOperation):
         false = self.get_operand(2, state)
         return torch.where(mask, true, false)
 
+@decorator_common
+class Threshold(BaseOperation):
+    N_OPERANDS = 1
+    HYPERPARAMS = dict(
+        threshold=Continuous.partial(sigma=10),
+        below=Continuous.partial(sigma=3),
+        above=Continuous.partial(sigma=3)
+    )
+    DEFAULTS = dict(threshold=0, below=-1, above=1)
+
+    def forward(self, state):
+        operand = self.get_operand(0, state)
+        threshold = self.get_hyperparam("threshold")
+        above = self.get_hyperparam("above")
+        below = self.get_hyperparam("below")
+        return torch.where(operand > threshold, above, below)
+
+@decorator_common
+class Compare(BaseOperation):
+    N_OPERANDS = 4
+
+    def forward(self, state):
+        mask = self.get_operand(0, state) > self.get_operand(1, state)
+        true = self.get_operand(2, state)
+        false = self.get_operand(3, state)
+        return torch.where(mask, true, false)
 
 
 @decorator_common

@@ -252,3 +252,23 @@ class Dot(BaseOperation):
 
     def __repr__(self):
         return f"({self.operands[0]}^T {self.operands[1]})"
+
+@decorator_common
+class SelfDot(BaseOperation):
+    N_OPERANDS = 1
+    ALLOW_FIRST = False
+    def forward(self, state):
+        op1 = self.get_operand(0, state)
+        dot = (op1 * op1).sum(-1, keepdim=True)
+        return torch.ones_like(op1) * dot
+
+    def __repr__(self):
+        return f"||{self.operands[0]}||^2"
+
+
+
+@decorator_common
+class Atan2(BaseOperation):
+    N_OPERANDS = 2
+    def forward(self, state):
+        return self.get_operand(0, state).atan2(self.get_operand(1, state))

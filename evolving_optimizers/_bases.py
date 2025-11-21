@@ -110,22 +110,58 @@ class BaseOperation(ABC):
         """returns value of specified hyperparameter"""
         return self.hyperparams[key].get_value()
 
-    def get_flat_idxs(self) -> list[list[int]]:
+    def flat_branches(self, include_self:bool=True):
+        """flat operands"""
+        flat: list[BaseOperation] = []
+
+        if include_self:
+            flat.append(self)
+
+        for op in self.operands:
+            flat.extend(op.flat_branches())
+
+        return flat
+
+    def flat_idxs(self, include_self:bool=True) -> list[list[int]]:
         """returns indexes of each operation in the entire tree"""
-        tree_idxs = [[i] for i in range(self.N_OPERANDS)]
+        tree_idxs = []
+
+        if include_self:
+            tree_idxs.insert(0, [])
+
         for i, op in enumerate(self.operands):
-            for idxs in op.get_flat_idxs():
+            for idxs in op.flat_idxs(include_self=True):
                 tree_idxs.append([i, *idxs])
+
         return tree_idxs
 
-    def select_branch_by_idxs(self, idx: list[int]):
+    # def flat_idxs(self, include_self:bool=True) -> list[list[int]]:
+    #     """returns indexes of each operation in the entire tree"""
+    #     tree_idxs = [[i] for i in range(self.N_OPERANDS)]
+
+    #     if include_self:
+    #         tree_idxs.insert(0, [])
+
+    #     for i, op in enumerate(self.operands):
+    #         for idxs in op.flat_idxs(include_self=False):
+    #             tree_idxs.append([i, *idxs])
+
+    #     return tree_idxs
+
+    def depth(self) -> int:
+        return max(len(i) for i in self.flat_idxs())
+
+    def total_operands(self) -> int:
+        return len(self.flat_branches(include_self=False))
+
+    def select_branch_by_idx(self, idx: list[int]):
         """select operation by its index"""
         c = self
         for v in idx:
             c = c.operands[v]
         return c
 
-    def replace_branch_by_idxs_(self, idx: list[int], new: "BaseOperation"):
+    def replace_branch_by_idx_(self, idx: list[int], new: "BaseOperation"):
         """replace operation under indexes with another one (in-place)"""
         if len(idx) == 0:
             raise RuntimeError("Idxs is an empty list, can't replace self!")
@@ -140,26 +176,97 @@ class BaseOperation(ABC):
 
         raise RuntimeError("can't happen")
 
-    def select_random_branch(self, weight_fn: Callable[[list[int]], float] = lambda idx: 1, include_self:bool=False):
-        """select a random operation based on a weighting function"""
-        idxs = self.get_flat_idxs()
+    def pick_via_random_walk(self, include_self: bool = True) -> "tuple[list[BaseOperation], list[list[int]]]":
+        """random walk on the tree until it hits a leaf, returns ``(branches, idxs)``"""
         if include_self:
-            idxs.insert(0, [])
+            branches: list[BaseOperation] = [self]
+            idxs: list[list[int]] = [[]]
+        else:
+            branches = []
+            idxs = []
 
-        if len(idxs) == 0:
-            raise RuntimeError(f"{self.string()} has no children, can't select random branch")
+        current = self
+        path = []
 
-        weights = [weight_fn(v) for v in idxs]
-        if sum(weights) == 0: weights = None
-        idx = random.choices(idxs, weights, k=1)[0]
-        return idx, self.select_branch_by_idxs(idx)
+        while True:
+            if current.N_OPERANDS == 0:
+                return branches, idxs
 
-    def flat_branches(self):
-        """flat operands including self"""
-        flat: list[BaseOperation] = [self]
-        for op in self.operands:
-            flat.extend(op.flat_branches())
-        return flat
+            idx = random.randrange(0, current.N_OPERANDS)
+            branches.append(current.operands[idx])
+            path.append(idx)
+            idxs.append(path.copy())
+
+            current = current.operands[idx]
+
+
+    def pick_random_branch(
+        self,
+        target_rdepth: float | None,
+        weight_fn: "Callable[[BaseOperation, list[int]], float] | None" = None,
+        self_weight: float | None = None,
+        unbiased: bool = True,
+        eps: float = 0.01,
+        exp: float = 2,
+        shift: float = 0.0,
+    ) -> "tuple[BaseOperation, list[int]]":
+        """Select a random branch weighted by target relative depth. Returns ``(branch, idx)``.
+
+        Args:
+            target_rdepth (float): target depth from 0 to 1.
+            weight_fn (Callable[[BaseOperation, list[int]], float] | None, optional):
+                optional function which accepts ``(operation, idx)`` and returns
+                multiplier to weight of the operation. Defaults to None.
+            self_weight (bool, optional):
+                if specified, can pick self with weight multiplied by this value. Defaults to None
+            unbiased (bool, optional):
+                removes bias where some branches have so many operands that
+                they are significantly more likely to be picked. Defaults to 0.
+            eps (float, optional): lowest possible weight. Defaults to 0.01.
+            exp (float, optional): exponential applied to probabilities to make them stronger. Defaults to 2
+            shift (float, optional): shifts probabilities. Defaults to 0.
+        """
+        include_self = self_weight is not None
+        if unbiased:
+            branches, idxs = self.pick_via_random_walk(include_self=include_self)
+
+        else:
+            branches = self.flat_branches(include_self=include_self)
+            idxs = self.flat_idxs(include_self=include_self)
+            assert len(branches) == len(idxs), f"{branches = }, {idxs = }"
+
+        if target_rdepth is None:
+            weights = [1. for _ in branches]
+
+        else:
+            dists_to_root = [len(i) for i in idxs]
+            dists_to_leaf = [b.depth() for b in branches]
+
+            # relative depths in [0, 1] range
+            rdepths = [r / max(r + l, 1) for r, l in zip(dists_to_root, dists_to_leaf)]
+
+            # weigths are distances from depths to targets
+            weights = [(1 - abs(target_rdepth - rd)) ** exp for rd in rdepths]
+            weights = [max(w + shift, eps) for w in weights]
+
+        if self_weight is not None:
+            weights[0] = weights[0] * self_weight
+
+        # apply weight fn
+        if weight_fn is not None:
+            weights = [w * weight_fn(branch, idx) for w, branch, idx in zip(weights, branches, idxs)]
+
+        # select branch by weights
+        if sum(weights) == 0:
+            weights = None
+
+        # if weights is not None:
+        #     for w, b in zip(weights, branches):
+        #         print(f'{w = }, {b = }')
+
+        i_sel = random.choices(list(range(len(branches))), weights, k=1)[0]
+        return branches[i_sel], idxs[i_sel]
+
 
     def to_(self, device: torch.types.Device = None, dtype: torch.dtype | None = None):
         """move to device and dtype in-place"""
@@ -220,12 +327,22 @@ class BaseCrossover(ABC):
 
 
 class BasePool(ABC):
-    """randomly selects operations from the pool"""
+    """randomly selects operations from the pool
+    Args:
+        must_contain (Sequence[type[BaseOperation]]): if cur=0, tree will require to contain any of specified operands.
+    """
+    def __init__(self, must_contain: Sequence[type[BaseOperation]]):
+        self.must_contain = must_contain
+
     @abstractmethod
     def select(self, cur: int, weight_fn: Callable[[type[BaseOperation]], float] = lambda x: 1) -> type[BaseOperation]:
         """selects a random operation class, cur is number of operations already in the tree"""
 
     def random_tree(self, cur: int = 0, must_contain: Sequence[type[BaseOperation]] = (), weight_fn: Callable[[type[BaseOperation]], float] = lambda x: 1) -> BaseOperation:
+
+        if cur == 0:
+            must_contain = list(must_contain) + list(self.must_contain)
+
         tree, cur = random_tree(self, cur=cur, must_contain=must_contain, weight_fn=weight_fn)
         return tree
 
@@ -246,9 +363,13 @@ def random_tree(pool: BasePool, cur: int = 0, must_contain: Sequence[type[BaseOp
     Args:
         pool (BasePool): pool of operations
         cur (int, optional): number of operations that have already been selected to penalize large trees. Defaults to 0.
-        must_contain (Sequence[type[BaseOperation]], optional): will generate until tree contains at least one of any of the specified operations. Defaults to ().
-        weight_fn (_type_, optional): function that accepts type[BaseOperation] and returns multiplier to probability of picking that operation. Defaults to ``lambda x: 1``.
-        _n_attempts (int, optional): number of attempts generating a tree that contains ``must_contain`` (to avoid infinite recursion). Defaults to 0.
+        must_contain (Sequence[type[BaseOperation]], optional):
+            will generate until tree contains at least one of any of the specified operations. Defaults to ().
+        weight_fn (_type_, optional):
+            function that accepts type[BaseOperation] and returns multiplier to probability of picking that operation.
+            Defaults to ``lambda x: 1``.
+        _n_attempts (int, optional):
+            number of attempts generating a tree that contains ``must_contain`` (to avoid infinite recursion). Defaults to 0.
     """
     init_cur = cur
 

@@ -190,7 +190,6 @@ class DirectionalHessp(BaseOperation):
         return Hz
 
 OPTIMIZER_POOL = [Grad, Loss, Params, Hessp, LossAt, GradAt, HesspAt, DirectionalGrad, DirectionalLoss, DirectionalHessp]
-
 def gd():
     return Grad()
 
@@ -291,13 +290,27 @@ def lion():
 
 
 def mars_adam():
+    def mars_g():
+        return Normalize(Add2(Grad(), MulScalar(LastDifference(Grad(), n=1), x=0.3)), p=2, clip=True)
     return EpsilonDiv(
-        EMA(Normalize(Add2(Grad(), MulScalar(LastDifference(Grad(), n=1), x=0.3)), p=2, clip=True), beta=0.9, debias=True),
-        SqrtAbs(EMA(Square(Normalize(Add2(Grad(), MulScalar(LastDifference(Grad(), n=1), x=0.3)), p=2, clip=True)), beta=0.99, debias=True)),
+        EMA(mars_g(), beta=0.9, debias=True),
+        SqrtAbs(EMA(Square(mars_g()), beta=0.99, debias=True)),
         eps=1e-7,
         clip=False,
     )
 
+def bb_long():
+    num = SelfDot(LastDifference(Params(), n=1))
+    denom = Dot(LastDifference(Params(), n=1), LastDifference(Grad(), n=1))
+    return Mul2(Grad(), EpsilonDiv(num, denom, eps=1e-7, clip=False))
+
+def bb_short():
+    num = Dot(LastDifference(Params(), n=1), LastDifference(Grad(), n=1))
+    denom = SelfDot(LastDifference(Grad(), n=1))
+    return Mul2(Grad(), EpsilonDiv(num, denom, eps=1e-7, clip=False))
+
+def polyak():
+    return Mul2(Grad(), EpsilonDiv(Loss(), SelfDot(Grad()), eps=1e-7, clip=False))
 
 def init_population(lr=None):
     opts = [
@@ -317,6 +330,9 @@ def init_population(lr=None):
         sophiag(),
         lion(),
         mars_adam(),
+        bb_long(),
+        bb_short(),
+        polyak(),
     ]
 
     if lr is not None:

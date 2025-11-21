@@ -282,7 +282,7 @@ class IslandGA(Optimizer):
             probability rolled for each optimizer to exchange one solution with another optimizer,
             if a roll succeeds, it rolls again. Defaults to 0.05.
         crossover_prob (float, optional):
-            probability of crossing the exchanged solutions from two optimizers. Defaults to 0.5.
+            probability of crossing the exchanged solutions from two optimizers. Defaults to 0.1.
         mutation_prob (float, optional): probability of mutating the exchanged solutions. Defaults to 0.1.
         two_way (bool, optional):
             if True, during an exchange between two optimizers, both receive one solution from another optimizer.

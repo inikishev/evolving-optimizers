@@ -55,8 +55,6 @@ class Sign(BaseOperation):
     def forward(self, state):
         return self.get_operand(0, state).sign()
 
-    def __repr__(self):
-        return f"sgn({self.operands[0]})"
 
 @decorator_common
 class Normalize(BaseOperation):
@@ -157,18 +155,12 @@ class Sigmoid(BaseOperation):
     def forward(self, state):
         return self.get_operand(0, state).sigmoid()
 
-    def __repr__(self):
-        return f"sigmoid({self.operands[0]})"
-
 @decorator_common
 class Tanh(BaseOperation):
     N_OPERANDS = 1
 
     def forward(self, state):
         return self.get_operand(0, state).tanh()
-
-    def __repr__(self):
-        return f"tanh({self.operands[0]})"
 
 
 @decorator_common
@@ -178,19 +170,45 @@ class Sin(BaseOperation):
     def forward(self, state):
         return self.get_operand(0, state).sin()
 
-    def __repr__(self):
-        return f"sin({self.operands[0]})"
+@decorator_common
+class Cos(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        return self.get_operand(0, state).cos()
+
+@decorator_common
+class Sinc(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        return self.get_operand(0, state).sinc()
+
+@decorator_common
+class Arctan(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        return self.get_operand(0, state).arctan()
+
+@decorator_common
+class Arcsinh(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        return self.get_operand(0, state).arcsinh()
 
 @decorator_common
 class Softplus(BaseOperation):
     N_OPERANDS = 1
     ALLOW_FIRST = False
+    HYPERPARAMS = dict(beta=Continuous.partial(sigma=10), threshold=Continuous.partial(sigma=50))
+    DEFAULTS = dict(beta=1, threshold=20)
 
     def forward(self, state):
-        return F.softplus(self.get_operand(0, state)) # pylint:disable=not-callable
-
-    def __repr__(self):
-        return f"softplus({self.operands[0]})"
+        beta = self.get_hyperparam("beta")
+        threshold = self.get_hyperparam("threshold")
+        return F.softplus(self.get_operand(0, state), beta, threshold) # pylint:disable=not-callable
 
 @decorator_common
 class Softmax(BaseOperation):
@@ -200,6 +218,66 @@ class Softmax(BaseOperation):
     def forward(self, state):
         return self.get_operand(0, state).softmax(-1)
 
-    def __repr__(self):
-        return f"softmax({self.operands[0]})"
+@decorator_common
+class Softmin(BaseOperation):
+    N_OPERANDS = 1
+    ALLOW_FIRST = False
+
+    def forward(self, state):
+        return F.softmin(self.get_operand(0, state), -1)
+
+@decorator_common
+class Softsign(BaseOperation):
+    N_OPERANDS = 1
+    ALLOW_FIRST = False
+
+    def forward(self, state):
+        return F.softsign(self.get_operand(0, state))
+
+@decorator_common
+class LogSigmoid(BaseOperation):
+    N_OPERANDS = 1
+    ALLOW_FIRST = False
+
+    def forward(self, state):
+        return F.logsigmoid(self.get_operand(0, state)) # pylint:disable=not-callable
+
+@decorator_common
+class NormalizeMAD(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        operand = self.get_operand(0, state)
+        mad = operand.abs().mean(dim=-1, keepdim=True)
+        return operand / mad.clip(min=torch.finfo(mad.dtype).tiny * 2)
+
+@decorator_common
+class NormalizeLInf(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        operand = self.get_operand(0, state)
+        linf = operand.amax(dim=-1, keepdim=True)
+        return operand / linf.clip(min=torch.finfo(linf.dtype).tiny * 2)
+
+@decorator_common
+class Negate(BaseOperation):
+    N_OPERANDS = 1
+
+    def forward(self, state):
+        operand = self.get_operand(0, state)
+        return operand.amax(dim=-1, keepdim=True) - operand
+
+@decorator_common
+class Dropout(BaseOperation):
+    N_OPERANDS = 1
+    ALLOW_FIRST = False
+    HYPERPARAMS = dict(p=Continuous.partial(min=0, max=1))
+    DEFAULTS = dict(p=1)
+
+    def forward(self, state):
+        operand = self.get_operand(0, state)
+        p = self.get_hyperparam("p")
+        mask = torch.bernoulli(torch.full_like(operand, p))
+        return operand * mask
 
